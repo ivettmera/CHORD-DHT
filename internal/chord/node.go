@@ -34,8 +34,9 @@ type Node struct {
 	pb.UnimplementedChordServiceServer
 	
 	// Node identification
-	id      *hash.Hash
-	address string
+	id         *hash.Hash
+	address    string // Address advertised to other nodes
+	listenAddr string // Address to bind/listen on
 	
 	// Chord state
 	predecessor *NodeInfo
@@ -73,15 +74,20 @@ type NodeInfo struct {
 
 // NewNode creates a new Chord node
 func NewNode(address string, id *hash.Hash) *Node {
+	return NewNodeWithAdvertise(address, address, id)
+}
+
+// NewNodeWithAdvertise creates a new Chord node with separate listen and advertise addresses
+func NewNodeWithAdvertise(listenAddr, advertiseAddr string, id *hash.Hash) *Node {
 	if id == nil {
-		id = hash.GenerateID(address)
+		id = hash.GenerateID(advertiseAddr)
 	}
 	
 	ctx, cancel := context.WithCancel(context.Background())
 	
 	node := &Node{
 		id:          id,
-		address:     address,
+		address:     advertiseAddr, // Use advertise address for node identity
 		fingers:     make([]*NodeInfo, FingerTableSize),
 		clients:     make(map[string]pb.ChordServiceClient),
 		connections: make(map[string]*grpc.ClientConn),
@@ -90,8 +96,11 @@ func NewNode(address string, id *hash.Hash) *Node {
 		data:        make(map[string][]byte),
 	}
 	
-	// Initialize finger table with self
-	selfInfo := &NodeInfo{ID: id, Address: address}
+	// Store listen address separately for binding
+	node.listenAddr = listenAddr
+	
+	// Initialize finger table with advertise address
+	selfInfo := &NodeInfo{ID: id, Address: advertiseAddr}
 	for i := 0; i < FingerTableSize; i++ {
 		node.fingers[i] = selfInfo
 	}
@@ -104,10 +113,16 @@ func (n *Node) Start() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	
+	// Use listenAddr if set, otherwise use address
+	bindAddr := n.address
+	if n.listenAddr != "" {
+		bindAddr = n.listenAddr
+	}
+	
 	// Start gRPC server
-	listener, err := net.Listen("tcp", n.address)
+	listener, err := net.Listen("tcp", bindAddr)
 	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", n.address, err)
+		return fmt.Errorf("failed to listen on %s: %w", bindAddr, err)
 	}
 	
 	n.listener = listener
@@ -125,7 +140,7 @@ func (n *Node) Start() error {
 	// Start maintenance routines
 	n.startMaintenance()
 	
-	log.Printf("Node %s started on %s", n.id.String()[:8], n.address)
+	log.Printf("Node %s listening on %s, advertising %s", n.id.String()[:8], bindAddr, n.address)
 	return nil
 }
 

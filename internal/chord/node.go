@@ -261,20 +261,22 @@ func (n *Node) findSuccessor(key *hash.Hash) (*NodeInfo, error) {
 // closestPrecedingFinger finds the closest preceding finger for a key
 func (n *Node) closestPrecedingFinger(key *hash.Hash) *NodeInfo {
 	n.mu.RLock()
-	defer n.mu.RUnlock()
-	
-	// Search finger table from highest to lowest
+	var candidate *NodeInfo
+
+	//tomamos el primer candidato mas cercano
 	for i := FingerTableSize - 1; i >= 0; i-- {
 		finger := n.fingers[i]
 		if finger != nil && finger.ID.InRangeExclusive(n.id, key) {
-			// Verify the finger is still alive
-			if n.remotePing(finger.Address) == nil {
-				return finger
-			}
+			candidate = finger
+			break
+		}
+	n.mu.RUnlock()
+
+	if candidate != nil {
+		if n.remotePing(candidate.Address) == nil {
+			return candidate
 		}
 	}
-	
-	// If no finger found, return self
 	return &NodeInfo{ID: n.id, Address: n.address}
 }
 

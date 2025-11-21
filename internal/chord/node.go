@@ -13,6 +13,7 @@ import (
 	
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/reflection"
 )
 
 const (
@@ -128,6 +129,9 @@ func (n *Node) Start() error {
 	n.listener = listener
 	n.server = grpc.NewServer()
 	pb.RegisterChordServiceServer(n.server, n)
+	
+	// Enable reflection for grpcurl compatibility
+	reflection.Register(n.server)
 	
 	n.wg.Add(1)
 	go func() {

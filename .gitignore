@@ -58,8 +58,3 @@ temp/
 
 # Generated protobuf files (optional - you might want to commit these)
 proto/*.pb.go
-
-# Binary outputs
-node
-simulator
-chord-dht

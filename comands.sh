@@ -26,5 +26,6 @@ pkill -f chord-node
 cd /home/i298832/chord-dht && make build
 
 # push and pull
-git add . && git commit -m "Update" && git push origin main
-git pull origin main
+git add . && git commit -m "Update" && git push origin master
+git pull origin master
+git reset --hard origin/master

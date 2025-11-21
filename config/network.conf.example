@@ -1,0 +1,22 @@
+# Network configuration for Chord DHT deployment
+# Edit these IPs to match your actual VM external IPs
+
+# VM1 (Bootstrap) - us-central1
+VM1_IP=34.123.45.67
+
+# VM2 - europe-west1  
+VM2_IP=35.234.56.78
+
+# VM3 - asia-east1
+VM3_IP=36.145.67.89
+
+# Bootstrap address (typically VM1)
+BOOTSTRAP_ADDR=34.123.45.67:8000
+
+# Default ports for multiple nodes per VM
+BASE_PORT=8000
+NODE_COUNT_PER_VM=3
+
+# Deployment settings
+LOG_LEVEL=info
+METRICS_INTERVAL=5s

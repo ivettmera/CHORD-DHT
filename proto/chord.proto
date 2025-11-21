@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "./proto";
+
+// Chord node representation
+message Node {
+    string id = 1;       // SHA-1 hash as hex string
+    string address = 2;  // IP:Port
+}
+
+// Request/Response messages for FindSuccessor
+message FindSuccessorRequest {
+    string key = 1;
+    Node requester = 2;
+}
+
+message FindSuccessorResponse {
+    Node successor = 1;
+    bool success = 2;
+    string error = 3;
+}
+
+// Request/Response messages for Notify
+message NotifyRequest {
+    Node node = 1;
+}
+
+message NotifyResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+// Request/Response messages for GetInfo
+message GetInfoRequest {
+}
+
+message GetInfoResponse {
+    Node node = 1;
+    Node predecessor = 2;
+    Node successor = 3;
+    repeated Node fingers = 4;
+    bool success = 5;
+    string error = 6;
+}
+
+// Request/Response messages for Ping
+message PingRequest {
+    Node requester = 1;
+}
+
+message PingResponse {
+    bool alive = 1;
+    int64 timestamp = 2;
+}
+
+// Additional messages for Closest Preceding Finger
+message ClosestPrecedingFingerRequest {
+    string key = 1;
+}
+
+message ClosestPrecedingFingerResponse {
+    Node node = 1;
+    bool success = 2;
+    string error = 3;
+}
+
+// gRPC Service Definition
+service ChordService {
+    // Core Chord operations
+    rpc FindSuccessor(FindSuccessorRequest) returns (FindSuccessorResponse);
+    rpc Notify(NotifyRequest) returns (NotifyResponse);
+    rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+    rpc Ping(PingRequest) returns (PingResponse);
+    
+    // Additional helpful operations
+    rpc ClosestPrecedingFinger(ClosestPrecedingFingerRequest) returns (ClosestPrecedingFingerResponse);
+}

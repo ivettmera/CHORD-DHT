@@ -1,0 +1,221 @@
+# Chord DHT Makefile
+
+# Variables
+GOCMD=go
+GOBUILD=$(GOCMD) build
+GOCLEAN=$(GOCMD) clean
+GOTEST=$(GOCMD) test
+GOGET=$(GOCMD) get
+GOMOD=$(GOCMD) mod
+
+# Binary names
+NODE_BINARY=node
+SIMULATOR_BINARY=simulator
+
+# Docker variables
+DOCKER_IMAGE=chord-dht
+DOCKER_TAG=latest
+
+# Directories
+BUILD_DIR=build
+RESULTS_DIR=results
+PROTO_DIR=proto
+
+# Protobuf files
+PROTO_FILES=$(wildcard $(PROTO_DIR)/*.proto)
+
+.PHONY: all build clean test deps proto docker run help
+
+# Default target
+all: deps proto build
+
+# Help target
+help:
+	@echo "Available targets:"
+	@echo "  all        - Build everything (deps + proto + build)"
+	@echo "  build      - Build node and simulator binaries"
+	@echo "  proto      - Generate protobuf code"
+	@echo "  test       - Run tests"
+	@echo "  clean      - Clean build artifacts"
+	@echo "  deps       - Download dependencies"
+	@echo "  docker     - Build Docker image"
+	@echo "  run        - Run node as bootstrap"
+	@echo "  run-sim    - Run simulator with default settings"
+	@echo "  install    - Install binaries to GOPATH/bin"
+
+# Download dependencies
+deps:
+	@echo "Downloading dependencies..."
+	$(GOMOD) download
+	$(GOMOD) tidy
+
+# Generate protobuf code
+proto: $(PROTO_FILES)
+	@echo "Generating protobuf code..."
+	@if command -v protoc >/dev/null 2>&1; then \
+		chmod +x generate.sh && ./generate.sh; \
+	else \
+		echo "Warning: protoc not found. Skipping protobuf generation."; \
+		echo "Install protobuf compiler: apt-get install -y protobuf-compiler"; \
+	fi
+
+# Build binaries
+build: proto
+	@echo "Building binaries..."
+	@mkdir -p $(BUILD_DIR)
+	$(GOBUILD) -o $(BUILD_DIR)/$(NODE_BINARY) ./cmd/node
+	$(GOBUILD) -o $(BUILD_DIR)/$(SIMULATOR_BINARY) ./cmd/simulator
+	@echo "Binaries built in $(BUILD_DIR)/"
+
+# Build with race detection (for development)
+build-race: proto
+	@echo "Building binaries with race detection..."
+	@mkdir -p $(BUILD_DIR)
+	$(GOBUILD) -race -o $(BUILD_DIR)/$(NODE_BINARY) ./cmd/node
+	$(GOBUILD) -race -o $(BUILD_DIR)/$(SIMULATOR_BINARY) ./cmd/simulator
+
+# Install binaries to GOPATH/bin
+install: build
+	@echo "Installing binaries..."
+	$(GOCMD) install ./cmd/node
+	$(GOCMD) install ./cmd/simulator
+
+# Run tests
+test:
+	@echo "Running tests..."
+	$(GOTEST) -v ./...
+
+# Run tests with coverage
+test-coverage:
+	@echo "Running tests with coverage..."
+	$(GOTEST) -v -coverprofile=coverage.out ./...
+	$(GOCMD) tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
+
+# Clean build artifacts
+clean:
+	@echo "Cleaning..."
+	$(GOCLEAN)
+	rm -rf $(BUILD_DIR)
+	rm -rf $(RESULTS_DIR)
+	rm -f coverage.out coverage.html
+	rm -f $(PROTO_DIR)/*.pb.go
+
+# Build Docker image
+docker:
+	@echo "Building Docker image..."
+	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+
+# Build Docker image with no cache
+docker-clean:
+	@echo "Building Docker image (no cache)..."
+	docker build --no-cache -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+
+# Run node as bootstrap (development)
+run: build
+	@echo "Starting bootstrap node..."
+	@mkdir -p $(RESULTS_DIR)
+	./$(BUILD_DIR)/$(NODE_BINARY) --addr="localhost:5000" --bootstrap="" --verbose
+
+# Run node joining existing ring (development)
+run-join: build
+	@echo "Starting node to join existing ring..."
+	@mkdir -p $(RESULTS_DIR)
+	./$(BUILD_DIR)/$(NODE_BINARY) --addr="localhost:5001" --bootstrap="localhost:5000" --verbose
+
+# Run simulator with default settings
+run-sim: build
+	@echo "Running simulator..."
+	@mkdir -p $(RESULTS_DIR)
+	./$(BUILD_DIR)/$(SIMULATOR_BINARY) --nodes=10 --duration=60s --lookup-rate=5 --verbose
+
+# Run simulator with custom settings
+run-sim-custom: build
+	@echo "Running custom simulation..."
+	@mkdir -p $(RESULTS_DIR)
+	./$(BUILD_DIR)/$(SIMULATOR_BINARY) --nodes=$(NODES) --duration=$(DURATION) --lookup-rate=$(RATE) --verbose
+
+# Docker run targets
+docker-run:
+	@echo "Running node in Docker (bootstrap)..."
+	docker run -p 5000:5000 $(DOCKER_IMAGE):$(DOCKER_TAG)
+
+docker-run-join:
+	@echo "Running node in Docker (join existing)..."
+	docker run -p 5001:5000 $(DOCKER_IMAGE):$(DOCKER_TAG) ./node --addr="0.0.0.0:5000" --bootstrap="host.docker.internal:5000"
+
+# Format code
+fmt:
+	@echo "Formatting code..."
+	$(GOCMD) fmt ./...
+
+# Lint code (requires golangci-lint)
+lint:
+	@echo "Linting code..."
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run; \
+	else \
+		echo "golangci-lint not found. Install it with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
+	fi
+
+# Generate documentation
+docs:
+	@echo "Generating documentation..."
+	$(GOCMD) doc -all ./...
+
+# Benchmark tests
+bench:
+	@echo "Running benchmarks..."
+	$(GOTEST) -bench=. -benchmem ./...
+
+# Performance test
+perf-test: build
+	@echo "Running performance test..."
+	@mkdir -p $(RESULTS_DIR)
+	./$(BUILD_DIR)/$(SIMULATOR_BINARY) --nodes=50 --duration=300s --lookup-rate=100 --experiment-id="perf-test"
+
+# Scalability test
+scale-test: build
+	@echo "Running scalability test..."
+	@mkdir -p $(RESULTS_DIR)
+	./$(BUILD_DIR)/$(SIMULATOR_BINARY) --nodes=100 --duration=600s --lookup-rate=50 --experiment-id="scale-test"
+
+# VM deployment helpers
+deploy-vm1: docker
+	@echo "Deploying to VM1 (bootstrap)..."
+	@echo "Run: docker run -d -p 5000:5000 --name chord-bootstrap $(DOCKER_IMAGE):$(DOCKER_TAG) ./node --addr=0.0.0.0:5000 --bootstrap="
+
+deploy-vm2: docker
+	@echo "Deploying to VM2..."
+	@echo "Run: docker run -d -p 5001:5000 --name chord-node1 $(DOCKER_IMAGE):$(DOCKER_TAG) ./node --addr=0.0.0.0:5000 --bootstrap=VM1_IP:5000"
+
+deploy-vm3: docker
+	@echo "Deploying to VM3..."
+	@echo "Run multiple nodes:"
+	@echo "docker run -d -p 6000:5000 --name chord-node2 $(DOCKER_IMAGE):$(DOCKER_TAG) ./node --addr=0.0.0.0:5000 --bootstrap=VM1_IP:5000"
+	@echo "docker run -d -p 6001:5000 --name chord-node3 $(DOCKER_IMAGE):$(DOCKER_TAG) ./node --addr=0.0.0.0:5000 --bootstrap=VM1_IP:5000"
+
+# Development workflow
+dev: clean deps proto build test
+	@echo "Development build complete!"
+
+# Production build
+prod: clean deps proto build test lint
+	@echo "Production build complete!"
+
+# Show binary info
+info: build
+	@echo "Binary information:"
+	@ls -la $(BUILD_DIR)/
+	@echo ""
+	@file $(BUILD_DIR)/$(NODE_BINARY)
+	@file $(BUILD_DIR)/$(SIMULATOR_BINARY)
+
+# Watch for changes and rebuild (requires entr)
+watch:
+	@echo "Watching for changes..."
+	@if command -v entr >/dev/null 2>&1; then \
+		find . -name "*.go" -o -name "*.proto" | entr -r make build; \
+	else \
+		echo "entr not found. Install it with: apt-get install entr"; \
+	fi
